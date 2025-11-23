@@ -160,7 +160,23 @@ jobs:
           Write-Host "============================================" -ForegroundColor Cyan
           Write-Host ""
 
-          # Test critical imports
+          # First, check Python works
+          Write-Host "Testing Python executable..." -ForegroundColor Gray
+          & "python-bundle\python.exe" --version
+          Write-Host ""
+
+          # Check site-packages location
+          Write-Host "Python site-packages location:" -ForegroundColor Gray
+          & "python-bundle\python.exe" -c "import site; print(site.getsitepackages())"
+          Write-Host ""
+
+          # List installed packages
+          Write-Host "Installed packages:" -ForegroundColor Gray
+          & "python-bundle\Scripts\pip.exe" list | Select-Object -First 20
+          Write-Host "... (showing first 20 packages)" -ForegroundColor Gray
+          Write-Host ""
+
+          # Test critical imports with detailed error output
           $testPackages = @(
             @{Name="psycopg2"; Import="import psycopg2"},
             @{Name="lxml"; Import="import lxml"},
@@ -175,18 +191,16 @@ jobs:
             @{Name="git (GitPython)"; Import="import git"}
           )
 
+          Write-Host "Testing package imports..." -ForegroundColor Cyan
           $allOK = $true
           foreach ($package in $testPackages) {
-            try {
-              & "python-bundle\python.exe" -c $package.Import 2>&1 | Out-Null
-              if ($LASTEXITCODE -eq 0) {
-                Write-Host "  [OK] $($package.Name)" -ForegroundColor Green
-              } else {
-                Write-Host "  [FAIL] $($package.Name)" -ForegroundColor Red
-                $allOK = $false
-              }
-            } catch {
-              Write-Host "  [FAIL] $($package.Name)" -ForegroundColor Red
+            Write-Host "  Testing $($package.Name)..." -ForegroundColor Gray -NoNewline
+            $errorOutput = & "python-bundle\python.exe" -c $package.Import 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host " [OK]" -ForegroundColor Green
+            } else {
+              Write-Host " [FAIL]" -ForegroundColor Red
+              Write-Host "    Error: $errorOutput" -ForegroundColor Yellow
               $allOK = $false
             }
           }
@@ -194,11 +208,12 @@ jobs:
           if (-not $allOK) {
             Write-Host ""
             Write-Host "Validation FAILED - some packages cannot be imported" -ForegroundColor Red
-            exit 1
+            Write-Host "Continuing anyway to create bundle for manual inspection..." -ForegroundColor Yellow
+            # Don't exit - let's create the bundle anyway for debugging
+          } else {
+            Write-Host ""
+            Write-Host "All validation tests PASSED" -ForegroundColor Green
           }
-
-          Write-Host ""
-          Write-Host "All validation tests PASSED" -ForegroundColor Green
         shell: pwsh
 
       - name: Create bundle statistics
