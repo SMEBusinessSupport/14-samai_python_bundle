@@ -45,8 +45,8 @@ jobs:
           Write-Host "Extracting WinPython" -ForegroundColor Cyan
           Write-Host "============================================" -ForegroundColor Cyan
 
-          # Extract
-          .\winpython.exe -o"WinPython_Extract" -y
+          # Extract - WinPython extracts to current directory
+          .\winpython.exe -y
 
           # List what was extracted
           Write-Host "Checking extracted contents..." -ForegroundColor Gray
