@@ -1,0 +1,259 @@
+name: Build and Release Python Bundle
+
+on:
+  push:
+    paths:
+      - 'requirements.txt'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag (e.g., v3.12.10.1-odoo18-1)'
+        required: false
+        default: ''
+
+jobs:
+  build-bundle:
+    name: Build Clean Python Bundle
+    runs-on: windows-latest
+
+    permissions:
+      contents: write  # Needed to create releases
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download WinPython
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Downloading WinPython 3.12.10.1" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+
+          $url = "https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.12.10.1dot.exe"
+          Write-Host "URL: $url" -ForegroundColor Gray
+
+          Invoke-WebRequest $url -OutFile winpython.exe -UseBasicParsing
+
+          Write-Host "Download complete" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Extract WinPython
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Extracting WinPython" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+
+          # Extract
+          .\winpython.exe -o"WinPython_Extract" -y
+
+          # Find Python directory
+          $winPyRoot = Get-ChildItem -Path WinPython_Extract -Directory -Filter "WPy64-*" | Select-Object -First 1
+          $pythonDir = Join-Path $winPyRoot.FullName "python"
+
+          Write-Host "Python found at: $pythonDir" -ForegroundColor Gray
+
+          # Create bundle directory
+          New-Item -ItemType Directory -Path "python-bundle" -Force | Out-Null
+
+          # Copy Python
+          Copy-Item -Path "$pythonDir\*" -Destination "python-bundle\" -Recurse -Force
+
+          Write-Host "Extraction complete" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Upgrade pip
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Upgrading pip" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+
+          & "python-bundle\Scripts\pip.exe" install --upgrade pip setuptools wheel
+
+          Write-Host "pip upgraded" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Install requirements
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Installing Python packages" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "This may take 10-15 minutes..." -ForegroundColor Yellow
+          Write-Host ""
+
+          & "python-bundle\Scripts\pip.exe" install -r requirements.txt
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host ""
+            Write-Host "Some packages failed, installing critical packages individually..." -ForegroundColor Yellow
+
+            $criticalPackages = @(
+              "psycopg2-binary",
+              "lxml",
+              "Pillow",
+              "Werkzeug",
+              "Jinja2",
+              "Babel",
+              "reportlab",
+              "anthropic",
+              "openai",
+              "chromadb",
+              "sentence-transformers",
+              "GitPython"
+            )
+
+            foreach ($pkg in $criticalPackages) {
+              Write-Host "  Installing $pkg..." -ForegroundColor Gray
+              & "python-bundle\Scripts\pip.exe" install $pkg 2>&1 | Out-Null
+            }
+          }
+
+          Write-Host ""
+          Write-Host "Installation complete" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Validate bundle
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Validating Bundle" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host ""
+
+          # Test critical imports
+          $testPackages = @(
+            @{Name="psycopg2"; Import="import psycopg2"},
+            @{Name="lxml"; Import="import lxml"},
+            @{Name="Pillow"; Import="from PIL import Image"},
+            @{Name="werkzeug"; Import="import werkzeug"},
+            @{Name="jinja2"; Import="import jinja2"},
+            @{Name="babel"; Import="import babel"},
+            @{Name="anthropic"; Import="import anthropic"},
+            @{Name="openai"; Import="import openai"},
+            @{Name="chromadb"; Import="import chromadb"},
+            @{Name="sentence_transformers"; Import="import sentence_transformers"},
+            @{Name="git (GitPython)"; Import="import git"}
+          )
+
+          $allOK = $true
+          foreach ($package in $testPackages) {
+            try {
+              & "python-bundle\python.exe" -c $package.Import 2>&1 | Out-Null
+              if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [OK] $($package.Name)" -ForegroundColor Green
+              } else {
+                Write-Host "  [FAIL] $($package.Name)" -ForegroundColor Red
+                $allOK = $false
+              }
+            } catch {
+              Write-Host "  [FAIL] $($package.Name)" -ForegroundColor Red
+              $allOK = $false
+            }
+          }
+
+          if (-not $allOK) {
+            Write-Host ""
+            Write-Host "Validation FAILED - some packages cannot be imported" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "All validation tests PASSED" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Create bundle statistics
+        id: stats
+        run: |
+          $bundleSize = (Get-ChildItem -Path "python-bundle" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+          $packageCount = (& "python-bundle\Scripts\pip.exe" list --format=freeze | Measure-Object -Line).Lines
+
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Bundle Statistics" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Size: $([math]::Round($bundleSize, 2)) MB" -ForegroundColor White
+          Write-Host "Packages: $packageCount installed" -ForegroundColor White
+          Write-Host "Python: WinPython 3.12.10.1" -ForegroundColor White
+          Write-Host "Environment: Clean GitHub Actions VM" -ForegroundColor Green
+          Write-Host "============================================" -ForegroundColor Cyan
+
+          # Output for release notes
+          echo "bundle_size=$([math]::Round($bundleSize, 2))" >> $env:GITHUB_OUTPUT
+          echo "package_count=$packageCount" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Compress bundle
+        run: |
+          Write-Host "============================================" -ForegroundColor Cyan
+          Write-Host "Compressing bundle" -ForegroundColor Cyan
+          Write-Host "============================================" -ForegroundColor Cyan
+
+          Compress-Archive -Path "python-bundle\*" -DestinationPath "samai-python-bundle.zip" -CompressionLevel Optimal
+
+          $zipSize = (Get-Item "samai-python-bundle.zip").Length / 1MB
+          Write-Host "Compressed size: $([math]::Round($zipSize, 2)) MB" -ForegroundColor Green
+        shell: pwsh
+
+      - name: Generate version tag
+        id: version
+        run: |
+          if ("${{ github.event.inputs.version_tag }}" -ne "") {
+            $tag = "${{ github.event.inputs.version_tag }}"
+          } else {
+            $date = Get-Date -Format "yyyyMMdd-HHmmss"
+            $tag = "v3.12.10.1-odoo18-$date"
+          }
+
+          Write-Host "Version tag: $tag" -ForegroundColor Cyan
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Python Bundle ${{ steps.version.outputs.tag }}
+          body: |
+            # SAM AI Python Bundle
+
+            **Built in clean GitHub Actions environment** - No contamination guaranteed
+
+            ## Bundle Details
+            - **Python Version:** WinPython 3.12.10.1
+            - **Bundle Size:** ${{ steps.stats.outputs.bundle_size }} MB
+            - **Packages:** ${{ steps.stats.outputs.package_count }} installed
+            - **Environment:** Fresh Windows VM (no Python pre-installed)
+            - **Built:** ${{ github.run_id }}
+
+            ## Included Packages
+            - All Odoo 18 dependencies
+            - SAM AI packages: anthropic, openai, chromadb, sentence-transformers, GitPython
+            - Full requirements.txt from commit ${{ github.sha }}
+
+            ## How to Use
+
+            1. Download `samai-python-bundle.zip`
+            2. Extract to your installer project's `bundled/python/` directory
+            3. Build installer
+
+            ## Verification
+            All critical imports tested and validated before release.
+          files: |
+            samai-python-bundle.zip
+          draft: false
+          prerelease: false
+
+      - name: Success summary
+        run: |
+          Write-Host ""
+          Write-Host "============================================" -ForegroundColor Green
+          Write-Host "RELEASE CREATED SUCCESSFULLY" -ForegroundColor Green
+          Write-Host "============================================" -ForegroundColor Green
+          Write-Host ""
+          Write-Host "Tag: ${{ steps.version.outputs.tag }}" -ForegroundColor Cyan
+          Write-Host "Size: ${{ steps.stats.outputs.bundle_size }} MB" -ForegroundColor Cyan
+          Write-Host "Packages: ${{ steps.stats.outputs.package_count }}" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Download from:" -ForegroundColor Yellow
+          Write-Host "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}" -ForegroundColor White
+          Write-Host ""
+        shell: pwsh

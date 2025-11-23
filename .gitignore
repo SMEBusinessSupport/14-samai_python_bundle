@@ -1,0 +1,16 @@
+# Python bundle build artifacts (do NOT commit these)
+python-bundle/
+WinPython_Extract/
+winpython.exe
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# OS
+.DS_Store
+Thumbs.db
