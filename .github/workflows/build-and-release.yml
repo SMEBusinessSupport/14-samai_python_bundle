@@ -49,6 +49,23 @@ jobs:
           # Copy Python installation
           Copy-Item -Path "$pythonRoot\*" -Destination "python-bundle\" -Recurse -Force
 
+          # Make Python portable by creating _pth file
+          Write-Host "Making Python portable..." -ForegroundColor Gray
+
+          # Get Python version (e.g., "312" from "3.12.10")
+          $pythonVersion = & "python-bundle\python.exe" -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')"
+          $pthFile = "python-bundle\python$pythonVersion._pth"
+
+          # Create _pth file to make Python look for packages relative to exe
+          @"
+.
+.\Lib
+.\Lib\site-packages
+.\DLLs
+import site
+"@ | Out-File -FilePath $pthFile -Encoding ascii
+
+          Write-Host "Created $pthFile for portable execution" -ForegroundColor Gray
           Write-Host "Python bundle created" -ForegroundColor Green
         shell: pwsh
 
