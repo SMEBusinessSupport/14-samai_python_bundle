@@ -57,14 +57,11 @@ jobs:
           $pthFile = "python-bundle\python$pythonVersion._pth"
 
           # Create _pth file to make Python look for packages relative to exe
-          $pthContent = @"
-.
-.\Lib
-.\Lib\site-packages
-.\DLLs
-import site
-"@
-          $pthContent | Out-File -FilePath $pthFile -Encoding ascii
+          "." | Out-File -FilePath $pthFile -Encoding ascii
+          ".\Lib" | Out-File -FilePath $pthFile -Encoding ascii -Append
+          ".\Lib\site-packages" | Out-File -FilePath $pthFile -Encoding ascii -Append
+          ".\DLLs" | Out-File -FilePath $pthFile -Encoding ascii -Append
+          "import site" | Out-File -FilePath $pthFile -Encoding ascii -Append
 
           Write-Host "Created $pthFile for portable execution" -ForegroundColor Gray
           Write-Host "Python bundle created" -ForegroundColor Green
