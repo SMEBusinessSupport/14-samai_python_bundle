@@ -25,56 +25,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download WinPython
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create portable Python bundle
         run: |
           Write-Host "============================================" -ForegroundColor Cyan
-          Write-Host "Downloading WinPython 3.12.10.1" -ForegroundColor Cyan
+          Write-Host "Creating portable Python bundle" -ForegroundColor Cyan
           Write-Host "============================================" -ForegroundColor Cyan
 
-          $url = "https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.12.10.1dot.exe"
-          Write-Host "URL: $url" -ForegroundColor Gray
-
-          Invoke-WebRequest $url -OutFile winpython.exe -UseBasicParsing
-
-          Write-Host "Download complete" -ForegroundColor Green
-        shell: pwsh
-
-      - name: Extract WinPython
-        run: |
-          Write-Host "============================================" -ForegroundColor Cyan
-          Write-Host "Extracting WinPython" -ForegroundColor Cyan
-          Write-Host "============================================" -ForegroundColor Cyan
-
-          # Extract - WinPython extracts to current directory
-          .\winpython.exe -y
-
-          # List what was extracted
-          Write-Host "Checking extracted contents..." -ForegroundColor Gray
-          Get-ChildItem -Path . -Directory | ForEach-Object { Write-Host "  Found: $($_.Name)" -ForegroundColor Gray }
-
-          # Find Python directory - check both possible locations
-          $winPyRoot = Get-ChildItem -Path . -Directory -Filter "WPy64-*" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-          if (-not $winPyRoot) {
-            $winPyRoot = Get-ChildItem -Path WinPython_Extract -Directory -Filter "WPy64-*" -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-
-          if (-not $winPyRoot) {
-            Write-Host "ERROR: Could not find WPy64-* directory" -ForegroundColor Red
-            exit 1
-          }
-
-          $pythonDir = Join-Path $winPyRoot.FullName "python"
-
-          Write-Host "Python found at: $pythonDir" -ForegroundColor Gray
-
-          # Create bundle directory
+          # Create bundle directory structure
           New-Item -ItemType Directory -Path "python-bundle" -Force | Out-Null
 
-          # Copy Python
-          Copy-Item -Path "$pythonDir\*" -Destination "python-bundle\" -Recurse -Force
+          # Get Python location
+          $pythonExe = (Get-Command python).Source
+          $pythonRoot = Split-Path $pythonExe
 
-          Write-Host "Extraction complete" -ForegroundColor Green
+          Write-Host "Python location: $pythonRoot" -ForegroundColor Gray
+
+          # Copy Python installation
+          Copy-Item -Path "$pythonRoot\*" -Destination "python-bundle\" -Recurse -Force
+
+          Write-Host "Python bundle created" -ForegroundColor Green
         shell: pwsh
 
       - name: Upgrade pip
