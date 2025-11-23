@@ -48,8 +48,22 @@ jobs:
           # Extract
           .\winpython.exe -o"WinPython_Extract" -y
 
-          # Find Python directory
-          $winPyRoot = Get-ChildItem -Path WinPython_Extract -Directory -Filter "WPy64-*" | Select-Object -First 1
+          # List what was extracted
+          Write-Host "Checking extracted contents..." -ForegroundColor Gray
+          Get-ChildItem -Path . -Directory | ForEach-Object { Write-Host "  Found: $($_.Name)" -ForegroundColor Gray }
+
+          # Find Python directory - check both possible locations
+          $winPyRoot = Get-ChildItem -Path . -Directory -Filter "WPy64-*" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if (-not $winPyRoot) {
+            $winPyRoot = Get-ChildItem -Path WinPython_Extract -Directory -Filter "WPy64-*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+
+          if (-not $winPyRoot) {
+            Write-Host "ERROR: Could not find WPy64-* directory" -ForegroundColor Red
+            exit 1
+          }
+
           $pythonDir = Join-Path $winPyRoot.FullName "python"
 
           Write-Host "Python found at: $pythonDir" -ForegroundColor Gray
