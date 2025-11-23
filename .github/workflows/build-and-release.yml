@@ -139,7 +139,7 @@ import site
 
           foreach ($pkg in $odooPackages) {
             Write-Host "  Installing $pkg" -ForegroundColor Gray
-            & "python-bundle\Scripts\pip.exe" install $pkg --no-warn-script-location 2>&1 | Out-Null
+            & "python-bundle\Scripts\pip.exe" install $pkg --target "python-bundle\Lib\site-packages" --no-warn-script-location 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
               Write-Host "    WARNING: Failed to install $pkg" -ForegroundColor Yellow
             }
@@ -159,7 +159,7 @@ import site
 
           foreach ($pkg in $samaiPackages) {
             Write-Host "  Installing $pkg" -ForegroundColor Gray
-            & "python-bundle\Scripts\pip.exe" install $pkg --no-warn-script-location
+            & "python-bundle\Scripts\pip.exe" install $pkg --target "python-bundle\Lib\site-packages" --no-warn-script-location
             if ($LASTEXITCODE -ne 0) {
               Write-Host "    ERROR: Failed to install $pkg" -ForegroundColor Red
               exit 1
